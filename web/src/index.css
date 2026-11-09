@@ -1,0 +1,13 @@
+@layer theme, base, mui, components, utilities;
+
+@import 'tailwindcss';
+
+html {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
