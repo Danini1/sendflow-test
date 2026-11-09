@@ -1,0 +1,163 @@
+rules_version = '2';
+
+// Sendflow - Firestore Security Rules
+// - Collections apenas na raiz (sem subcollections).
+// - O UID do Firebase Auth e o tenant: todo documento tem `ownerId`.
+// - Tudo que nao esta listado aqui e negado por padrao.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return signedIn() && data.ownerId == request.auth.uid;
+    }
+
+    // Documento ao ser criado: timestamps definidos pelo servidor.
+    function hasServerTimestampsOnCreate() {
+      return request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // Documento ao ser atualizado: createdAt imutavel, updatedAt renovado.
+    function hasValidTimestampsOnUpdate() {
+      return request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isNonEmptyString(value, maxLength) {
+      return value is string
+        && value.size() > 0
+        && value.size() <= maxLength;
+    }
+
+    // Telefone brasileiro normalizado: +55 + DDD + celular (9 digitos, inicia
+    // com 9) ou fixo (8 digitos, inicia de 2 a 5). Par: web/.../contacts/utils/phone.ts
+    function isValidPhone(value) {
+      return value is string
+        && value.matches('^[+]55[1-9]{2}(9[0-9]{8}|[2-5][0-9]{7})$');
+    }
+
+    function connectionPath(connectionId) {
+      return /databases/$(database)/documents/connections/$(connectionId);
+    }
+
+    // A connection referenciada existe e pertence ao usuario autenticado.
+    function ownsConnection(connectionId) {
+      return connectionId is string
+        && exists(connectionPath(connectionId))
+        && get(connectionPath(connectionId)).data.ownerId == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------------
+    // users/{uid}
+    // ---------------------------------------------------------------
+
+    function isValidUserData(data) {
+      return data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && isNonEmptyString(data.email, 320)
+        && isNonEmptyString(data.displayName, 100);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && isValidUserData(request.resource.data)
+        && request.resource.data.uid == userId
+        && hasServerTimestampsOnCreate();
+
+      // uid e email sao imutaveis; displayName pode mudar.
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && isValidUserData(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && hasValidTimestampsOnUpdate();
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // connections/{connectionId}
+    // ---------------------------------------------------------------
+
+    function isValidConnectionData(data) {
+      return data.keys().hasOnly(['ownerId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['ownerId', 'name', 'createdAt', 'updatedAt'])
+        && isNonEmptyString(data.name, 100);
+    }
+
+    match /connections/{connectionId} {
+      allow read: if isOwner(resource.data);
+
+      allow create: if signedIn()
+        && isValidConnectionData(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && hasServerTimestampsOnCreate();
+
+      allow update: if isOwner(resource.data)
+        && isValidConnectionData(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && hasValidTimestampsOnUpdate();
+
+      // A exclusao e feita pela callable `deleteConnection`, que remove
+      // tambem os contatos e broadcasts da connection (cascata atomica).
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // contacts/{contactId}
+    // ---------------------------------------------------------------
+
+    function isValidContactData(data) {
+      return data.keys().hasOnly(['ownerId', 'connectionId', 'name', 'phone', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['ownerId', 'connectionId', 'name', 'phone', 'createdAt', 'updatedAt'])
+        && isNonEmptyString(data.name, 100)
+        && isValidPhone(data.phone);
+    }
+
+    match /contacts/{contactId} {
+      allow read: if isOwner(resource.data);
+
+      allow create: if signedIn()
+        && isValidContactData(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && ownsConnection(request.resource.data.connectionId)
+        && hasServerTimestampsOnCreate();
+
+      // ownerId e connectionId sao imutaveis: mover um contato para outra
+      // connection quebraria os broadcasts que o referenciam.
+      allow update: if isOwner(resource.data)
+        && isValidContactData(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.connectionId == resource.data.connectionId
+        && hasValidTimestampsOnUpdate();
+
+      allow delete: if isOwner(resource.data);
+    }
+
+    // ---------------------------------------------------------------
+    // broadcasts/{broadcastId}
+    // ---------------------------------------------------------------
+
+    match /broadcasts/{broadcastId} {
+      allow read: if isOwner(resource.data);
+
+      // Criacao e edicao exclusivamente pelas callables `createBroadcast` e
+      // `updateBroadcast`, que validam todos os contatos selecionados.
+      allow create, update: if false;
+
+      allow delete: if isOwner(resource.data);
+    }
+  }
+}
