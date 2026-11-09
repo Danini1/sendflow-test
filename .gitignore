@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+web/node_modules/
+functions/node_modules/
+
+# Build
+web/dist/
+functions/lib/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+
+# OS
+.DS_Store
+
+# Skills de assistente de IA (não fazem parte da aplicação)
+.agents/
+skills-lock.json
