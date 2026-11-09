@@ -1,0 +1,17 @@
+{
+  "name": "sendflow-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:emulator": "cd .. && firebase emulators:exec --only firestore --project demo-sendflow \"npm --prefix tests test\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@types/node": "^24.19.2",
+    "firebase": "^13.2.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

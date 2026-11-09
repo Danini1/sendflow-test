@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "firebase-admin/firestore": [
+        "../functions/node_modules/firebase-admin/lib/firestore/index.d.ts"
+      ]
+    }
+  },
+  "include": ["rules", "functions", "vitest.config.ts"]
+}
